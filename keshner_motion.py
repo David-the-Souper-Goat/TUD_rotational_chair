@@ -1,49 +1,54 @@
-
-import csv
-
-foldername_keshner = ""
-filename_keshner = "SeatRotationRad_15s_test.csv"
-path_keshner = foldername_keshner + "/" + filename_keshner if foldername_keshner else filename_keshner
-
+from math import sin, cos, pi
 
 class KeshnerMotion:
-    def __init__(self, filename:str = path_keshner):
+    
+    # CONSTANT
+    FUNDAMENTAL_FREQ = 0.005    #[Hz]
+    HOMONICS = [37, 49, 71, 101, 143, 211, 295, 419, 589, 823]
+    ANG_SPEED_HOMONICS = [20, 20, 20, 19, 19, 19, 16, 16, 15, 13]   #[deg/s]
+    TIME_TOTAL = 400            #[s]
+
+    def __init__(self, sampling_time:float = 0.1):
+        self.sampling_time = sampling_time
         self.t = []
-        self.ang_in_rad = []
-        self.ang_in_rev = []
-        self.filename = filename
         self.gear_ratio = 2**23
-        self.speed_ratio = 64.0
-        
-        self.read_csv()
+        self.speed_ratio = 6.0      #deg/s * speed_ratio -> rpm
 
-        self.delta_t = self.t[1] - self.t[0]
+    def position(self, t:float) -> float:
+        """
+        Calculate the position at a certain time.
+        By adding all the influeces from each sinusoidal signal.
+        ans = sum(-A_i * cos(2*pi*f_i*t + d_i) / (2*pi*f_i)) for i = 0 to 9
+        :param t: The time of the query in [s]
+        :type t: float
+        :return: The position in [deg]
+        :rtype: float
+        """
 
-    def read_csv(self) -> None:
-        with open(self.filename, mode='r') as file:
-            csvFile = csv.reader(file, delimiter=";")
-            for line in csvFile:
-                
-                t = float(line[0])
-                self.t.append(t)
-                
-                pos = float(line[1])
-                self.ang_in_rad.append(pos)
-                self.ang_in_rev.append(pos*self.gear_ratio/6.28318530718)
+        ans = 0.0
+        for i in range(len(self.HOMONICS)):
+            A_i = self.ANG_SPEED_HOMONICS[i]
+            f_i_rad = 2 * pi * self.FUNDAMENTAL_FREQ * self.HOMONICS[i]
+            ans = ans - A_i * cos(f_i_rad*t) / f_i_rad
 
-            self.l = len(self.t)
-        return
+        return ans
     
-    def calculate_speed(self, t1:float, dt:float) -> float:
-        ang_start = self.expected_location_in_rev(t1)
-        ang_end = self.expected_location_in_rev(t1+dt)
-        return (ang_end - ang_start) * self.speed_ratio / (self.gear_ratio * dt)
+    def speed(self, t:float) -> float:
+        """
+        Calculate the speed at a certain time.
+        By adding all the influeces from each sinusoidal signal.
+        ans = sum(A_i * sin(2*pi*f_i*t + d_i)) for i = 0 to 9
+        :param t: The time of the query in [s]
+        :type t: float
+        :return: The position in [deg/s]
+        :rtype: float
+        """
+        ans = sum([A*sin(2*pi*h*self.FUNDAMENTAL_FREQ*t) for A, h in zip(self.ANG_SPEED_HOMONICS, self.HOMONICS)])
+
+        return ans
     
-    def calculate_step(self, t1:float, dt:float) -> float:
-        return self.expected_location_in_rev(t1+dt) - self.expected_location_in_rev(t1)
-    
-    def expected_location_in_rev(self, t:float) -> float:
-        i = int(t//self.delta_t)
-        if i < self.l:
-            return self.ang_in_rev[i]
-        return self.ang_in_rev[-1]
+
+if __name__ == "__main__":
+    test = KeshnerMotion()
+    print(test.position(0))
+    print(test.position(0.5))
