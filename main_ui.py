@@ -8,6 +8,7 @@ import serial.tools.list_ports
 import threading
 import time
 from keshner_motion import KeshnerMotion
+import API_rotation_chair
 
 
 TEST_MODE = False
@@ -232,8 +233,8 @@ class VarComInterface:
         :param delta_t: the expected time difference between each time step
         :type delta_t: float
         """
-        def moveinc(xoi:float, voi:float, t:float) -> None:
-            command = 'moveinc ' + str(round(xoi,2)) + ' ' + str(round(voi,2)) + ' 1'
+        def go_jogging(voi:float, t:float) -> None:
+            command = API_rotation_chair.jogging(voi)
             try:
                 if not TEST_MODE:
                     self.serial_port.write((command + '\r').encode('ascii'))
@@ -250,6 +251,9 @@ class VarComInterface:
         self.record_motion(self.angle_table.t[-1])
         
         def motion_track() -> None:
+            # Start the index
+            i = 0
+            
             # Time stamps
             time_start = time.time()
             time_end = time_start + self.angle_table.t[-1]
@@ -259,9 +263,8 @@ class VarComInterface:
             # Loop of MOVEINC
             while time_curr < time_end:
                 time_curr_in_task = time_curr - time_start
-                xo = self.angle_table.calculate_step(time_curr_in_task, delta_t)
                 vo = self.angle_table.calculate_speed(time_curr_in_task, delta_t)
-                moveinc(xo, vo, time_curr_in_task)
+                go_jogging(vo, time_curr_in_task)
 
                 while time.time() < time_next: pass
                 time_curr = time.time()

@@ -1,4 +1,5 @@
 from math import sin, cos, pi
+from time import sleep
 
 class KeshnerMotion:
     
@@ -9,10 +10,17 @@ class KeshnerMotion:
     TIME_TOTAL = 400            #[s]
 
     def __init__(self, sampling_time:float = 0.1):
+        self.reset_sampling_time(sampling_time)
+
+
+    ### EXTERNAL FUNCTIONS
+    def next_step(self, i:int) -> tuple[int, float, float]:
+        return (i+1, self.time[i], self.speed_table[i])
+    def reset_sampling_time(self, sampling_time:float) -> None:
         self.sampling_time = sampling_time
-        self.t = []
-        self.gear_ratio = 2**23
-        self.speed_ratio = 6.0      #deg/s * speed_ratio -> rpm
+        self._generate_time_table()
+        self._generate_speed_table()
+        return
 
     def position(self, t:float) -> float:
         """
@@ -31,7 +39,7 @@ class KeshnerMotion:
             f_i_rad = 2 * pi * self.FUNDAMENTAL_FREQ * self.HOMONICS[i]
             ans = ans - A_i * cos(f_i_rad*t) / f_i_rad
 
-        return ans
+        return round(ans,2)
     
     def speed(self, t:float) -> float:
         """
@@ -45,10 +53,25 @@ class KeshnerMotion:
         """
         ans = sum([A*sin(2*pi*h*self.FUNDAMENTAL_FREQ*t) for A, h in zip(self.ANG_SPEED_HOMONICS, self.HOMONICS)])
 
-        return ans
+        return round(ans,2)
+    
+
+    ### INTERNAL FUNCTIONS  
+    def _generate_time_table(self) -> None:
+        self.time = [self.sampling_time * i for i in range(int(self.TIME_TOTAL // self.sampling_time)+1)]
+        return
+    
+    def _generate_speed_table(self) -> None:
+        self.speed_table = [self.speed(t) for t in self.time]
+        return
     
 
 if __name__ == "__main__":
     test = KeshnerMotion()
-    print(test.position(0))
-    print(test.position(0.5))
+    distance = test.position(0)
+    for k in range(100):
+        t_now = round(0.1*k, 2)
+        now_speed = test.speed(t_now)
+        print(f"t={t_now}, theta_i={round(distance,2)}, theta_c={test.position(t_now)}, w={now_speed}")
+        distance += now_speed*0.1
+        sleep(0.1)
