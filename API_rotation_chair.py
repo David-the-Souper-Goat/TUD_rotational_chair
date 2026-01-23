@@ -2,6 +2,8 @@ RESOLUTION_MOTOR = 2**16                            # [counts/rev_motor]
 GEAR_RATIO = 2**7                                   # [rev_motor/rev_output]
 RES_TOTAL = RESOLUTION_MOTOR * GEAR_RATIO           # Total Resolution per Revolution [counts/rev_output]
 
+def opmode(mode:int) -> str:
+    pass
 
 def moveabs(angle:float, angular_velocity:float) -> str:
     '''

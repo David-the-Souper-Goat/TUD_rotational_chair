@@ -7,15 +7,20 @@ class KeshnerMotion:
     FUNDAMENTAL_FREQ = 0.005    #[Hz]
     HOMONICS = [37, 49, 71, 101, 143, 211, 295, 419, 589, 823]
     ANG_SPEED_HOMONICS = [20, 20, 20, 19, 19, 19, 16, 16, 15, 13]   #[deg/s]
-    TIME_TOTAL = 400            #[s]
+    TIME_TOTAL = 20            #[s]
 
-    def __init__(self, sampling_time:float = 0.1):
+    def __init__(self, sampling_time:float = 0.5):
         self.reset_sampling_time(sampling_time)
 
 
     ### EXTERNAL FUNCTIONS
     def next_step(self, i:int) -> tuple[int, float, float]:
-        return (i+1, self.time[i], self.speed_table[i])
+        if i==len(self.time):
+            i = -1
+        else:
+            i_next = i+1
+        return (i_next, self.time[i], self.speed_table[i])
+    
     def reset_sampling_time(self, sampling_time:float) -> None:
         self.sampling_time = sampling_time
         self._generate_time_table()

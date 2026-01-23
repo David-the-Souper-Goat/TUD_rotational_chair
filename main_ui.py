@@ -15,7 +15,7 @@ TEST_MODE = False
 
 
 class VarComInterface:
-    def __init__(self, root, angle_table:KeshnerMotion|None = None):
+    def __init__(self, root, speed_table:KeshnerMotion|None = None):
         self.root = root
         self.root.title("VarCom Motor Controller Interface")
         self.root.geometry("800x600")
@@ -23,7 +23,7 @@ class VarComInterface:
         self.serial_port = None
         self.connected = False
 
-        self.angle_table = angle_table
+        self.speed_table = speed_table
         
         # Create GUI elements
         self.create_widgets()
@@ -226,7 +226,7 @@ class VarComInterface:
 
         return
     
-    def keshner_motion(self, delta_t:float = 0.05) -> None:
+    def keshner_motion(self, delta_t:float = 0.5) -> None:
         """
         Implement a Keshner motion to the servo.
         
@@ -247,8 +247,18 @@ class VarComInterface:
             messagebox.showwarning("Warning", "Not connected to motor controller")
             return
         
+        # change opmode to 0 (Velocity control)
+        self.cmd_entry.insert(0, "opmode 0")
+        self.send_command()
+        threading.Event().wait(1)  # Small delay between commands
+
+        # enable the motor again
+        self.cmd_entry.insert(0, "en")
+        self.send_command()
+        threading.Event().wait(3)  # Small delay between commands
+
         # Start a recording
-        self.record_motion(self.angle_table.t[-1])
+        # self.record_motion(self.speed_table.time[-1])
         
         def motion_track() -> None:
             # Start the index
@@ -256,20 +266,43 @@ class VarComInterface:
             
             # Time stamps
             time_start = time.time()
-            time_end = time_start + self.angle_table.t[-1]
+            time_end = time_start + self.speed_table.time[-1]
             time_curr = time.time()
             time_next = time_curr + delta_t
 
             # Loop of MOVEINC
             while time_curr < time_end:
-                time_curr_in_task = time_curr - time_start
-                vo = self.angle_table.calculate_speed(time_curr_in_task, delta_t)
-                go_jogging(vo, time_curr_in_task)
+                i, t_now, vo = self.speed_table.next_step(i)
+                if i==-1: break
+                go_jogging(vo, t_now)
 
                 while time.time() < time_next: pass
                 time_curr = time.time()
                 time_next = time_curr + delta_t
-            
+
+            # Stop jogging
+            go_jogging(0, t_now)
+
+            # disactive
+            self.cmd_entry.insert(0, "k")
+            self.send_command()
+            threading.Event().wait(0.5)  # Small delay between commands
+
+            # change opmode to 8 (Position control)
+            self.cmd_entry.insert(0, "opmode 8")
+            self.send_command()
+            threading.Event().wait(0.5)  # Small delay between commands
+
+            # enable the motor again
+            self.cmd_entry.insert(0, "en")
+            self.send_command()
+            threading.Event().wait(0.5)  # Small delay between commands
+
+            # go back home
+            self.cmd_entry.insert(0, "moveabs 0 2")
+            self.send_command()
+
+
             # End
             self.log_terminal("End of the motion.")
         
@@ -301,6 +334,6 @@ class VarComInterface:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    angle_table = KeshnerMotion()
-    app = VarComInterface(root, angle_table)
+    speed_table = KeshnerMotion()
+    app = VarComInterface(root, speed_table)
     root.mainloop()
