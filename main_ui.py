@@ -11,7 +11,7 @@ from keshner_motion import KeshnerMotion
 import API_rotation_chair
 
 
-TEST_MODE = True
+TEST_MODE = False
 
 
 class VarComInterface:
@@ -70,8 +70,9 @@ class VarComInterface:
         self.cmd_shortcut_frame.pack()
         ttk.Button(self.cmd_shortcut_frame, text="Start", command=self.home_position).grid(row=0, column=0, padx=5)
         ttk.Button(self.cmd_shortcut_frame, text="1 tour", command=self.one_tour).grid(row=1, column=0, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).grid(row=2, column=0, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor).grid(row=0, column=1, padx=5, rowspan=3)
+        ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).grid(row=0, column=1, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="Perception", command=self.perception).grid(row=1, column=1, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor).grid(row=0, column=2, padx=5, rowspan=2)
         
         # Script Frame
         script_frame = ttk.LabelFrame(self.root, text="Script", padding=10)
@@ -309,6 +310,37 @@ class VarComInterface:
         
         # Start a thread for tracking the angle
         threading.Thread(target=motion_track, daemon=True).start()
+
+    
+    def perception(self):
+        if not self.connected:
+            messagebox.showwarning("Warning", "Not connected to motor controller")
+            return
+
+        def run():
+            try:
+                self.log_terminal("Start Perception Experiment")
+                # command 1
+                cmd1 = "moveinc 16777216 15"
+                self.serial_port.write((cmd1 + "\r").encode("ascii"))
+                self.log_terminal("→ " + cmd1)
+
+                threading.Event().wait(9)
+                self.log_terminal("Now break for 30 seconds")
+
+                # wait 50 seconds
+                threading.Event().wait(30)
+
+                # command 2  (NOTE: you had a typo: "25000015" -> "250000 15")
+                cmd2 = "moveinc -16777216 15"
+                self.serial_port.write((cmd2 + "\r").encode("ascii"))
+                self.log_terminal("→ " + cmd2)
+
+            except Exception as e:
+                self.log_terminal(f"Perception error: {e}")
+
+        threading.Thread(target=run, daemon=True).start()
+
 
     def enable_motor(self) -> None:
         """
