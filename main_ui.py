@@ -11,23 +11,22 @@ from keshner_motion import KeshnerMotion
 import API_rotation_chair
 
 
-TEST_MODE = False
+TEST_MODE = True
 
 
 class VarComInterface:
-    def __init__(self, root, speed_table:KeshnerMotion|None = None):
+    def __init__(self, root):
         self.root = root
         self.root.title("VarCom Motor Controller Interface")
         self.root.geometry("800x600")
         
         self.serial_port = None
         self.connected = False
-
-        self.speed_table = speed_table
         
         # Create GUI elements
         self.create_widgets()
         
+
     def create_widgets(self):
         # Connection Frame
         conn_frame = ttk.LabelFrame(self.root, text="Connection", padding=10)
@@ -69,15 +68,16 @@ class VarComInterface:
         # Shortcut Buttons
         self.cmd_shortcut_frame = ttk.Frame(terminal_frame)
         self.cmd_shortcut_frame.pack()
-        ttk.Button(self.cmd_shortcut_frame, text="Start", command=self.home_position).pack(side="left", padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="1 tour", command=self.one_tour).pack(side="left", padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).pack(side="left", padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="Start", command=self.home_position).grid(row=0, column=0, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="1 tour", command=self.one_tour).grid(row=1, column=0, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).grid(row=2, column=0, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor).grid(row=0, column=1, padx=5, rowspan=3)
         
         # Script Frame
         script_frame = ttk.LabelFrame(self.root, text="Script", padding=10)
         script_frame.pack(fill="both", expand=True, padx=10, pady=5)
         
-        self.script_text = scrolledtext.ScrolledText(script_frame, height=10)
+        self.script_text = scrolledtext.ScrolledText(script_frame, height=5)
         self.script_text.pack(fill="both", expand=True)
         
         ttk.Button(script_frame, text="Execute Script", command=self.execute_script).pack(pady=5)
@@ -226,39 +226,40 @@ class VarComInterface:
 
         return
     
-    def keshner_motion(self, delta_t:float = 0.5) -> None:
+    def keshner_motion(self, delta_t:float = 0.1) -> None:
         """
         Implement a Keshner motion to the servo.
         
         :param delta_t: the expected time difference between each time step
         :type delta_t: float
         """
-        def go_jogging(voi:float, t:float) -> None:
-            command = API_rotation_chair.jogging(voi)
-            try:
-                if not TEST_MODE:
-                    self.serial_port.write((command + '\r').encode('ascii'))
-                self.log_terminal("→ " + command + f"\t\t\t\tat\t{round(t, 2)} s")
-            except Exception as e:
-                messagebox.showerror("Send Error", str(e))
-
 
         if not self.connected and not TEST_MODE:
             messagebox.showwarning("Warning", "Not connected to motor controller")
             return
         
+        self.log_terminal("Setting up Keshner motion...")
+        
+        #Create Keshner motion table
+        Keshner = KeshnerMotion(delta_t, 15)
+        threading.Event().wait(0.5)  # Small delay between commands
+
+        # disable the motor
+        self.stop_motor()
+        
         # change opmode to 0 (Velocity control)
-        self.cmd_entry.insert(0, "opmode 0")
-        self.send_command()
-        threading.Event().wait(1)  # Small delay between commands
+        self._send_command(API_rotation_chair.opmode(0))
+        threading.Event().wait(0.5)  # Small delay between commands
 
         # enable the motor again
-        self.cmd_entry.insert(0, "en")
-        self.send_command()
-        threading.Event().wait(3)  # Small delay between commands
+        self.enable_motor()
+
+        # change the acceleration
+        self._send_command(API_rotation_chair.acc(360*4))
 
         # Start a recording
-        # self.record_motion(self.speed_table.time[-1])
+        self._send_command(API_rotation_chair.record(Keshner.TIME_TOTAL, 2000, '"MECHANGLE "V'))
+        self._send_command(API_rotation_chair.trigger_record())
         
         def motion_track() -> None:
             # Start the index
@@ -266,67 +267,86 @@ class VarComInterface:
             
             # Time stamps
             time_start = time.time()
-            time_end = time_start + self.speed_table.time[-1]
+            time_end = time_start + Keshner.time[-1]
             time_curr = time.time()
             time_next = time_curr + delta_t
 
             # Loop of MOVEINC
             while time_curr < time_end:
-                i, t_now, vo = self.speed_table.next_step(i)
+                i, t_now, vo = Keshner.next_step(i)
                 if i==-1: break
-                go_jogging(vo, t_now)
+                self._send_command(API_rotation_chair.jogging(vo), f"at t={round(t_now,2)}s")
 
                 while time.time() < time_next: pass
                 time_curr = time.time()
                 time_next = time_curr + delta_t
 
             # Stop jogging
-            go_jogging(0, t_now)
-
-            # disactive
-            self.cmd_entry.insert(0, "k")
-            self.send_command()
+            self._send_command(API_rotation_chair.jogging(0))
             threading.Event().wait(0.5)  # Small delay between commands
 
+            # disactive
+            self.stop_motor()
+
             # change opmode to 8 (Position control)
-            self.cmd_entry.insert(0, "opmode 8")
-            self.send_command()
+            self._send_command(API_rotation_chair.opmode(8))
             threading.Event().wait(0.5)  # Small delay between commands
 
             # enable the motor again
-            self.cmd_entry.insert(0, "en")
-            self.send_command()
-            threading.Event().wait(0.5)  # Small delay between commands
+            self.enable_motor()
+
+            # change the acceleration
+            self._send_command(API_rotation_chair.acc(90))
 
             # go back home
-            self.cmd_entry.insert(0, "moveabs 0 2")
-            self.send_command()
-
+            self._send_command(API_rotation_chair.moveabs(0, 2))
 
             # End
             self.log_terminal("End of the motion.")
+            
+            # Get the recorded data
+            self._send_command(API_rotation_chair.get_recorded_data())
         
         # Start a thread for tracking the angle
         threading.Thread(target=motion_track, daemon=True).start()
 
-
-    def record_motion(self, span:float) -> None:
+    def enable_motor(self) -> None:
         """
-        Start a recording for SPAN seconds.\n
-        Record the variable 'MECHANGLE' and 'V'.
-        
-        :param span: the total span of the record
-        :type span: float
+        Enable function to enable the motor.
         """
-        num_points = 2000
-        sample_time_sec = span/num_points
-        sample_time = sample_time_sec * 1000000 // 31.25
-
-        self.clear_command()
-        self.cmd_entry.insert(0, f'record {sample_time} {num_points} "MECHANGLE "V')
-        self.send_command()
-
+        self._send_command(API_rotation_chair.enable_motor(), "Motor Enable")
+        threading.Event().wait(0.5)  # Small delay between commands
         return
+
+    def stop_motor(self) -> None:
+        """
+        Stop function to stop the chair immediately and disable the motor.
+        """
+        self._send_command(API_rotation_chair.disable_motor(), "Motor Stop")
+        threading.Event().wait(0.5)  # Small delay between commands
+        return
+
+    def _send_command(self, command, log_message: str = "") -> None:
+        """
+        An internal function "_send_command" to send command to the motor controller.
+        
+        :param self: Description
+        :param command: Description
+        :param log_message: Description
+        :type log_message: str
+        """
+        if not self.connected and not TEST_MODE:
+            messagebox.showwarning("Warning", "Not connected to motor controller")
+            return
+        
+        if not command: return
+        
+        try:
+            if not TEST_MODE:
+                self.serial_port.write((command + '\r').encode('ascii'))
+            self.log_terminal("→ " + command + "\t\t\t" + log_message)
+        except Exception as e:
+            messagebox.showerror("Send Error", str(e))
 
     ### NEW FUNCTIONS ###
 
@@ -334,6 +354,5 @@ class VarComInterface:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    speed_table = KeshnerMotion()
-    app = VarComInterface(root, speed_table)
+    app = VarComInterface(root)
     root.mainloop()

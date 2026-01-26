@@ -3,7 +3,53 @@ GEAR_RATIO = 2**7                                   # [rev_motor/rev_output]
 RES_TOTAL = RESOLUTION_MOTOR * GEAR_RATIO           # Total Resolution per Revolution [counts/rev_output]
 
 def opmode(mode:int) -> str:
-    pass
+    """
+    Change the operation mode of the rotation chair.
+    
+    :param mode: 0: Velocity Control\r
+                 8: Position Control
+    :type mode: int
+    """
+    return f"opmode {mode}"
+
+def enable_motor() -> str:
+    """
+    Enables the motor of the rotation chair.
+    """
+    return "en"
+
+def disable_motor() -> str:
+    """
+    Disables the motor of the rotation chair.
+    """
+    return "k"
+
+def record(sample_time:float, num_points:int, var:str = '"MECHANGLE "V') -> str:
+    """
+    Capture real-time variables from the rotation chair at specified intervals.
+    
+    :param sample_time: 0 to 31.25 seconds
+    :type sample_time: float
+    :param num_points: 1 to 2000
+    :type num_points: int
+    :param var: Name of recordable variable (default is "MECHANGLE V"). Must be preceded by a quotation mark.
+    :type var: str
+    """
+    sampling_time = int(round(sample_time * 1000000 / 31.25))  # Convert seconds to units of 31.25 microseconds
+    return f"record {sampling_time} {num_points} {var}"
+
+def trigger_record() -> str:
+    """
+    Triggers the start of data recording on the rotation chair.
+    """
+    return 'rectrig "CMD'
+
+def get_recorded_data() -> str:
+    """
+    Retrieves the recorded data from the rotation chair.
+    """
+    return 'get'
+
 
 def moveabs(angle:float, angular_velocity:float) -> str:
     '''

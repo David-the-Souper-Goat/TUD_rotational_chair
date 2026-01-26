@@ -9,9 +9,9 @@ class KeshnerMotion:
     ANG_SPEED_HOMONICS = [20, 20, 20, 19, 19, 19, 16, 16, 15, 13]   #[deg/s]
     TIME_TOTAL = 20            #[s]
 
-    def __init__(self, sampling_time:float = 0.5):
+    def __init__(self, sampling_time:float = 0.5, total_time:float = TIME_TOTAL) -> None:
+        self.TIME_TOTAL = total_time
         self.reset_sampling_time(sampling_time)
-
 
     ### EXTERNAL FUNCTIONS
     def next_step(self, i:int) -> tuple[int, float, float]:
