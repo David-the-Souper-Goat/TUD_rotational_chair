@@ -40,13 +40,14 @@ def record(sample_time:float, num_points:int, var:str = '"MECHANGLE "V') -> str:
 
 def trigger_record() -> str:
     """
-    Triggers the start of data recording on the rotation chair.
+    Triggers the start of data recording on the rotation chair when the next 'command' is sent.
     """
     return 'rectrig "CMD'
 
 def get_recorded_data() -> str:
     """
     Retrieves the recorded data from the rotation chair.
+    Please set the "GETMODE" to mode 0.
     """
     return 'get'
 

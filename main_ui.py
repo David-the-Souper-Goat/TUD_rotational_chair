@@ -245,24 +245,16 @@ class VarComInterface:
         Keshner = KeshnerMotion(delta_t, 15)
         threading.Event().wait(0.5)  # Small delay between commands
 
-        # disable the motor
-        self.stop_motor()
-        
-        # change opmode to 0 (Velocity control)
-        self._send_command(API_rotation_chair.opmode(0))
-        threading.Event().wait(0.5)  # Small delay between commands
-
-        # enable the motor again
-        self.enable_motor()
+        # switch the opmode to velocity control
+        self._opmode_switch(0)
 
         # change the acceleration
         self._send_command(API_rotation_chair.acc(360*4))
-
-        # Start a recording
-        self._send_command(API_rotation_chair.record(Keshner.TIME_TOTAL, 2000, '"MECHANGLE "V'))
-        self._send_command(API_rotation_chair.trigger_record())
         
         def motion_track() -> None:
+            # Start the recording
+            self._setup_record(delta_t/4, Keshner.TIME_TOTAL)
+
             # Start the index
             i = 0
             
@@ -272,7 +264,7 @@ class VarComInterface:
             time_curr = time.time()
             time_next = time_curr + delta_t
 
-            # Loop of MOVEINC
+            # Loop of jogging
             while time_curr < time_end:
                 i, t_now, vo = Keshner.next_step(i)
                 if i==-1: break
@@ -286,21 +278,14 @@ class VarComInterface:
             self._send_command(API_rotation_chair.jogging(0))
             threading.Event().wait(0.5)  # Small delay between commands
 
-            # disactive
-            self.stop_motor()
-
-            # change opmode to 8 (Position control)
-            self._send_command(API_rotation_chair.opmode(8))
-            threading.Event().wait(0.5)  # Small delay between commands
-
-            # enable the motor again
-            self.enable_motor()
+            # switch the opmode back to position control.
+            self._opmode_switch(8)
 
             # change the acceleration
             self._send_command(API_rotation_chair.acc(90))
 
             # go back home
-            self._send_command(API_rotation_chair.moveabs(0, 2))
+            self._send_command(API_rotation_chair.moveabs(0, 20))
 
             # End
             self.log_terminal("End of the motion.")
@@ -358,13 +343,12 @@ class VarComInterface:
         threading.Event().wait(0.5)  # Small delay between commands
         return
 
-    def _send_command(self, command, log_message: str = "") -> None:
+    def _send_command(self, command: str, log_message: str = "") -> None:
         """
         An internal function "_send_command" to send command to the motor controller.
         
-        :param self: Description
-        :param command: Description
-        :param log_message: Description
+        :param command: Syntax as per manual
+        :param log_message: Any message tagged
         :type log_message: str
         """
         if not self.connected and not TEST_MODE:
@@ -379,6 +363,35 @@ class VarComInterface:
             self.log_terminal("→ " + command + "\t\t\t" + log_message)
         except Exception as e:
             messagebox.showerror("Send Error", str(e))
+    
+    def _setup_record(self, sampling_time:float, sampling_span:float) -> None:
+        # set the record data to 'ascii' encode.
+        self._send_command("getmode 0")
+
+        self._send_command(API_rotation_chair.record(sampling_time, int(sampling_span//sampling_time), '"MECHANGLE "V'))
+
+        self._send_command(API_rotation_chair.trigger_record())
+
+        return
+    
+    def _opmode_switch(self, mode:int) -> None:
+        '''
+        Help the UI to stop the motor, change the mode, and restart the motor all at once.
+        
+        :param mode: 0: Velocity Control, 8: Position Control
+        :type mode: int
+        '''
+        # deactive the motor
+        self.stop_motor()
+
+        # change opmode
+        self._send_command(API_rotation_chair.opmode(mode))
+        threading.Event().wait(0.5)  # Small delay between commands
+
+        # enable the motor again
+        self.enable_motor()
+
+        return
 
     ### NEW FUNCTIONS ###
 
