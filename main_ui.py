@@ -7,6 +7,7 @@ import serial
 import serial.tools.list_ports
 import threading
 import time
+import datetime
 from keshner_motion import KeshnerMotion
 import API_rotation_chair
 
@@ -22,6 +23,7 @@ class VarComInterface:
         
         self.serial_port = None
         self.connected = False
+        self.getting_record = False
         
         # Create GUI elements
         self.create_widgets()
@@ -136,7 +138,7 @@ class VarComInterface:
     def read_serial(self):
         if TEST_MODE: return
 
-        while self.connected and self.serial_port:
+        while self.connected and self.serial_port and not self.getting_record:
             try:
                 if self.serial_port.in_waiting:
                     data = self.serial_port.readline().decode('ascii', errors='ignore').strip()
@@ -291,7 +293,7 @@ class VarComInterface:
             self.log_terminal("End of the motion.")
             
             # Get the recorded data
-            self._send_command(API_rotation_chair.get_recorded_data())
+            self.get_recorded_data()
         
         # Start a thread for tracking the angle
         threading.Thread(target=motion_track, daemon=True).start()
@@ -342,6 +344,18 @@ class VarComInterface:
         self._send_command(API_rotation_chair.disable_motor(), "Motor Stop")
         threading.Event().wait(0.5)  # Small delay between commands
         return
+    
+    def get_recorded_data(self) -> None:
+        self.getting_record = True
+        
+        # Get the recorded data
+        self._send_command(API_rotation_chair.get_recorded_data())
+
+        # Read the serial and output the file as txt.
+        self._read_serial()
+
+        self.getting_record = False
+        return
 
     def _send_command(self, command: str, log_message: str = "") -> None:
         """
@@ -368,7 +382,7 @@ class VarComInterface:
         # set the record data to 'ascii' encode.
         self._send_command("getmode 0")
 
-        self._send_command(API_rotation_chair.record(sampling_time, int(sampling_span//sampling_time), '"MECHANGLE "V'))
+        self._send_command(API_rotation_chair.record(sampling_time, int(sampling_span//sampling_time), '"V'))
 
         self._send_command(API_rotation_chair.trigger_record())
 
@@ -392,6 +406,22 @@ class VarComInterface:
         self.enable_motor()
 
         return
+    
+    
+    def _read_serial(self):
+        if TEST_MODE: return
+
+        while self.connected and self.serial_port and self.getting_record:
+            try:
+                if self.serial_port.in_waiting:
+                    data = self.serial_port.read().decode('ascii', errors='ignore')
+                    if data:
+                        with open(f"motion_record_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt", 'a') as newfile:
+                            newfile.write(data)
+                        
+            except Exception as e:
+                self.log_terminal(f"Read error: {e}")
+                break
 
     ### NEW FUNCTIONS ###
 
