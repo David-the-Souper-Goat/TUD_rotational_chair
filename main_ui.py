@@ -250,7 +250,7 @@ class VarComInterface:
         # switch the opmode to velocity control
         self._opmode_switch(0)
 
-        # change the acceleration
+        # change the acceleration cap
         self._send_command(API_rotation_chair.acc(360*4))
         
         def motion_track() -> None:
@@ -263,18 +263,24 @@ class VarComInterface:
             # Time stamps
             time_start = time.time()
             time_end = time_start + Keshner.time[-1]
-            time_curr = time.time()
-            time_next = time_curr + delta_t
+            
+            # Send the jogging commands all at once
+            for vo, to in zip(Keshner.speed_table, Keshner.time):
+                self._send_command(API_rotation_chair.jogging(vo, delta_t), f"at t={round(to,2)}s")
+                threading.Event().wait(delta_t)  # Small delay between commands
 
-            # Loop of jogging
-            while time_curr < time_end:
-                i, t_now, vo = Keshner.next_step(i)
-                if i==-1: break
-                self._send_command(API_rotation_chair.jogging(vo), f"at t={round(t_now,2)}s")
+            # time_curr = time.time()
+            # time_next = time_curr + delta_t
 
-                while time.time() < time_next: pass
-                time_curr = time.time()
-                time_next = time_curr + delta_t
+            # # Loop of jogging
+            # while time_curr < time_end:
+            #     i, t_now, vo = Keshner.next_step(i)
+            #     if i==-1: break
+            #     self._send_command(API_rotation_chair.jogging(vo), f"at t={round(t_now,2)}s")
+
+            #     while time.time() < time_next: pass
+            #     time_curr = time.time()
+            #     time_next = time_curr + delta_t
 
             # Stop jogging
             self._send_command(API_rotation_chair.jogging(0))
@@ -283,7 +289,7 @@ class VarComInterface:
             # switch the opmode back to position control.
             self._opmode_switch(8)
 
-            # change the acceleration
+            # change the acceleration cap
             self._send_command(API_rotation_chair.acc(90))
 
             # go back home
