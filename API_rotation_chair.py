@@ -24,6 +24,18 @@ def disable_motor() -> str:
     """
     return "k"
 
+def quiet() -> str:
+    """
+    Make the servo stop echoing the sent command.
+    """
+    return "echo 0"
+
+def dequiet() -> str:
+    """
+    Make the servo be echoing again.
+    """
+    return "echo 1"
+
 def record(sample_time:float, num_points:int, var:str = '"MECHANGLE "V') -> str:
     """
     Capture real-time variables from the rotation chair at specified intervals.
