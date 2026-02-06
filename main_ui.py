@@ -24,6 +24,9 @@ class VarComInterface:
         self.serial_port = None
         self.connected = False
         self.getting_record = False
+
+        self.speed = 0
+        self.mechangle = 0
         
         # Create GUI elements
         self.create_widgets()
@@ -76,6 +79,13 @@ class VarComInterface:
         ttk.Button(self.cmd_shortcut_frame, text="Perception", command=self.perception).grid(row=1, column=1, padx=5)
         ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor).grid(row=0, column=2, padx=5, rowspan=2)
         
+        # Status Dashboard
+        self.status_dashboard = ttk.Frame(terminal_frame)
+        self.status_dashboard.pack()
+        self.speed_label = tk.StringVar()
+        self._change_speed(self.speed)
+        tk.Label(self.status_dashboard, textvariable=self.speed_label).pack(side="left", padx=5)
+
         # Script Frame
         script_frame = ttk.LabelFrame(self.root, text="Script", padding=10)
         script_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -119,8 +129,7 @@ class VarComInterface:
             self.log_terminal("Connected to " + port)
             
             # Start reading thread
-            self.read_thread = threading.Thread(target=self.read_serial, daemon=True)
-            self.read_thread.start()
+            threading.Thread(target=self.read_serial, daemon=True).start()
             
         except Exception as e:
             messagebox.showerror("Connection Error", str(e))
@@ -134,6 +143,8 @@ class VarComInterface:
         self.connect_btn.config(text="Connect")
         self.status_label.config(text="Disconnected", foreground="red")
         self.log_terminal("Disconnected")
+        # To check how many threads are still alive
+        print(threading.enumerate())
     
     def read_serial(self):
         if TEST_MODE: return
@@ -142,8 +153,9 @@ class VarComInterface:
             try:
                 if self.serial_port.in_waiting:
                     data = self.serial_port.readline().decode('ascii', errors='ignore').strip()
-                    if data:
-                        self.log_terminal("← " + data)
+                    # if data:
+                    #     self.log_terminal("← " + data)
+                    self.post_process_read_data(data)
             except Exception as e:
                 self.log_terminal(f"Read error: {e}")
                 break
@@ -182,14 +194,12 @@ class VarComInterface:
         
         def run_script():
             for line in lines:
-                start_time = time.time_ns()
                 if not self.connected:
                     break
                 try:
                     self.serial_port.write((line + '\r').encode('ascii'))
                     self.log_terminal("→ " + line)
                     threading.Event().wait(0.5)  # Small delay between commands
-                    end_time = time.time_ns()
 
                 except Exception as e:
                     self.log_terminal(f"Script error: {e}")
@@ -203,9 +213,7 @@ class VarComInterface:
         self.terminal.see(tk.END)
         self.terminal.config(state="disabled")
 
-    
-    ### NEW FUNCTIONS ###
-    
+
     def home_position(self) -> None:
         """
         Move the chair to the turn 0 and position 0\n
@@ -229,7 +237,7 @@ class VarComInterface:
 
         return
     
-    def keshner_motion(self, delta_t:float = 0.1) -> None:
+    def keshner_motion(self, delta_t:float = 0.01) -> None:
         """
         Implement a Keshner motion to the servo.
         
@@ -244,43 +252,26 @@ class VarComInterface:
         self.log_terminal("Setting up Keshner motion...")
         
         #Create Keshner motion table
-        Keshner = KeshnerMotion(delta_t, 15)
+        Keshner = KeshnerMotion(delta_t)
         threading.Event().wait(0.5)  # Small delay between commands
 
         # switch the opmode to velocity control
         self._opmode_switch(0)
 
+        # switch off the echo
+        self._send_command(API_rotation_chair.quiet())
+
         # change the acceleration cap
-        self._send_command(API_rotation_chair.acc(360*4))
+        self._send_command(API_rotation_chair.acc(360*2))
         
         def motion_track() -> None:
             # Start the recording
-            self._setup_record(delta_t/4, Keshner.TIME_TOTAL)
-
-            # Start the index
-            i = 0
+            self._setup_record(delta_t/2, Keshner.TIME_TOTAL)
             
-            # Time stamps
-            time_start = time.time()
-            time_end = time_start + Keshner.time[-1]
-            
-            # Send the jogging commands all at once
+            # Send the jogging commands step by step
             for vo, to in zip(Keshner.speed_table, Keshner.time):
-                self._send_command(API_rotation_chair.jogging(vo, delta_t), f"at t={round(to,2)}s")
+                self._send_command(API_rotation_chair.jogging(vo), f"at t={round(to,2)}s")
                 threading.Event().wait(delta_t)  # Small delay between commands
-
-            # time_curr = time.time()
-            # time_next = time_curr + delta_t
-
-            # # Loop of jogging
-            # while time_curr < time_end:
-            #     i, t_now, vo = Keshner.next_step(i)
-            #     if i==-1: break
-            #     self._send_command(API_rotation_chair.jogging(vo), f"at t={round(t_now,2)}s")
-
-            #     while time.time() < time_next: pass
-            #     time_curr = time.time()
-            #     time_next = time_curr + delta_t
 
             # Stop jogging
             self._send_command(API_rotation_chair.jogging(0))
@@ -299,10 +290,18 @@ class VarComInterface:
             self.log_terminal("End of the motion.")
             
             # Get the recorded data
-            self.get_recorded_data()
+            self.get_recorded_data(Keshner)
+
+            threading.Thread(target=self.read_serial, daemon=True).start()
+
+            
+            # switch on the echo
+            self._send_command(API_rotation_chair.dequiet())
+            
         
-        # Start a thread for tracking the angle
+        # Start a thread for tracking the motion
         threading.Thread(target=motion_track, daemon=True).start()
+
 
     
     def perception(self):
@@ -335,6 +334,25 @@ class VarComInterface:
         threading.Thread(target=run, daemon=True).start()
 
 
+    def post_process_read_data(self, line:str) -> None:
+        """
+        To decide the read data should be:
+         1. Log to terminal
+         2. Save to a file
+         3. Change the state of any label
+         4. Doe niets evens
+        
+        :param line: The line of read data
+        :type line: str
+        """
+        if not line: return
+        
+
+
+        self.log_terminal("← " + line)
+        return
+
+
     def enable_motor(self) -> None:
         """
         Enable function to enable the motor.
@@ -351,16 +369,20 @@ class VarComInterface:
         threading.Event().wait(0.5)  # Small delay between commands
         return
     
-    def get_recorded_data(self) -> None:
+    def get_recorded_data(self, motion_parameter:KeshnerMotion|None = None) -> None:
         self.getting_record = True
         
         # Get the recorded data
         self._send_command(API_rotation_chair.get_recorded_data())
 
         # Read the serial and output the file as txt.
-        self._read_serial()
+        self._read_serial(motion_parameter)
 
-        self.getting_record = False
+        return
+    
+    def _change_speed(self, value: float) -> None:
+        self.speed = value
+        self.speed_label.set(str(value))
         return
 
     def _send_command(self, command: str, log_message: str = "") -> None:
@@ -414,16 +436,29 @@ class VarComInterface:
         return
     
     
-    def _read_serial(self):
+    def _read_serial(self, motion_parameter:KeshnerMotion|None = None):
         if TEST_MODE: return
+
+        # Create a file
+        recording_file_name = f"motion_record_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+
+        with open(recording_file_name, 'w') as newfile:
+            # Writing the header
+            if motion_parameter == None:
+                newfile.write("Sampling Time: N/A\t\tTotal Time: N/A\r\r")
+            else:
+                newfile.write(f"Sampling Time: {motion_parameter.sampling_time}\t\tTotal Time: {motion_parameter.TIME_TOTAL}\r")
 
         while self.connected and self.serial_port and self.getting_record:
             try:
                 if self.serial_port.in_waiting:
-                    data = self.serial_port.read().decode('ascii', errors='ignore')
+                    data = self.serial_port.readline().decode('ascii', errors='ignore')
                     if data:
-                        with open(f"motion_record_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt", 'a') as newfile:
-                            newfile.write(data)
+                        if data == "-->":
+                            self.getting_record = False
+                        else:
+                            with open(recording_file_name, 'a') as newfile:
+                                newfile.write(data)
                         
             except Exception as e:
                 self.log_terminal(f"Read error: {e}")
