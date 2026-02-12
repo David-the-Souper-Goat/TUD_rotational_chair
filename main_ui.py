@@ -12,7 +12,7 @@ from keshner_motion import KeshnerMotion
 import API_rotation_chair
 
 
-TEST_MODE = False
+TEST_MODE = True
 
 
 class VarComInterface:
@@ -24,6 +24,9 @@ class VarComInterface:
         self.serial_port = None
         self.connected = False
         self.getting_record = False
+
+        self.cmd_history = []
+        self.cmd_rollback = 0
 
         self.speed = 0
         self.mechangle = 0
@@ -67,6 +70,8 @@ class VarComInterface:
         self.cmd_entry = ttk.Entry(cmd_frame)
         self.cmd_entry.pack(side="left", fill="x", expand=True, padx=5)
         self.cmd_entry.bind("<Return>", lambda e: self.send_command())
+        self.cmd_entry.bind("<Up>", lambda e: self.history_up())
+        self.cmd_entry.bind("<Down>", lambda e: self.history_down())
         
         ttk.Button(cmd_frame, text="Send", command=self.send_command).pack(side="left", padx=5)
 
@@ -80,11 +85,11 @@ class VarComInterface:
         ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor).grid(row=0, column=2, padx=5, rowspan=2)
         
         # Status Dashboard
-        self.status_dashboard = ttk.Frame(terminal_frame)
-        self.status_dashboard.pack()
-        self.speed_label = tk.StringVar()
-        self._change_speed(self.speed)
-        tk.Label(self.status_dashboard, textvariable=self.speed_label).pack(side="left", padx=5)
+        # self.status_dashboard = ttk.Frame(terminal_frame)
+        # self.status_dashboard.pack()
+        # self.speed_label = tk.StringVar()
+        # self._change_speed(self.speed)
+        # tk.Label(self.status_dashboard, textvariable=self.speed_label).pack(side="left", padx=5)
 
         # Script Frame
         script_frame = ttk.LabelFrame(self.root, text="Script", padding=10)
@@ -173,12 +178,30 @@ class VarComInterface:
             if not TEST_MODE:
                 self.serial_port.write((command + '\r').encode('ascii'))
             self.log_terminal("→ " + command)
+            self.cmd_history.append(command)
+            self.cmd_rollback = 0
             self.cmd_entry.delete(0, tk.END)
         except Exception as e:
             messagebox.showerror("Send Error", str(e))
 
     def clear_command(self):
         self.cmd_entry.delete(0, tk.END)
+        return
+    
+    def history_up(self):
+        if not self.cmd_history:    return
+        if -self.cmd_rollback+1 > len(self.cmd_history):  return
+        self.cmd_rollback -= 1
+        self.clear_command()
+        self.cmd_entry.insert(0, self.cmd_history[self.cmd_rollback])
+        return
+    
+    def history_down(self):
+        if not self.cmd_history:    return
+        if self.cmd_rollback == 0:   return
+        self.cmd_rollback += 1
+        self.clear_command()
+        if self.cmd_rollback < 0: self.cmd_entry.insert(0, self.cmd_history[self.cmd_rollback])
         return
     
     def execute_script(self):
