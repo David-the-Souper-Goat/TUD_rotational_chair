@@ -1,7 +1,9 @@
+## Constants
 RESOLUTION_MOTOR = 2**16                            # [counts/rev_motor]
 GEAR_RATIO = 2**7                                   # [rev_motor/rev_output]
 RES_TOTAL = RESOLUTION_MOTOR * GEAR_RATIO           # Total Resolution per Revolution [counts/rev_output]
 
+## Motor Status Commands
 def opmode(mode:int) -> str:
     """
     Change the operation mode of the rotation chair.
@@ -24,44 +26,34 @@ def disable_motor() -> str:
     """
     return "k"
 
-def quiet() -> str:
+## Motion Parameter Commands
+def acc(val:float|None=None) -> str:
     """
-    Make the servo stop echoing the sent command.
-    """
-    return "echo 0"
-
-def dequiet() -> str:
-    """
-    Make the servo be echoing again.
-    """
-    return "echo 1"
-
-def record(sample_time:float, num_points:int, var:str = '"MECHANGLE "V') -> str:
-    """
-    Capture real-time variables from the rotation chair at specified intervals.
+    Gets/sets the acceleration value of the rotation chair.
     
-    :param sample_time: 0 to 31.25 seconds
-    :type sample_time: float
-    :param num_points: 1 to 2000
-    :type num_points: int
-    :param var: Name of recordable variable (default is "MECHANGLE V"). Must be preceded by a quotation mark.
-    :type var: str
+    :param val: If provided, sets the acceleration to this value (in deg/s**2). If None, returns the current acceleration value.
+    :type val: float | None
     """
-    sampling_time = int(round(sample_time * 1000000 / 31.25))  # Convert seconds to units of 31.25 microseconds
-    return f"record {sampling_time} {num_points} {var}"
+    if val:
+        return f"acc {_degs2rpm(val)}"
+    return "acc"
 
-def trigger_record() -> str:
-    """
-    Triggers the start of data recording on the rotation chair when the next 'command' is sent.
-    """
-    return 'rectrig "CMD'
 
-def get_recorded_data() -> str:
-    """
-    Retrieves the recorded data from the rotation chair.
-    Please set the "GETMODE" to mode 0.
-    """
-    return 'get'
+## Motion Commands
+def jogging(angular_velocity:float, duration:float|None=None) -> str:
+    '''
+    JOGGING function to rotate the chair continuously at a specified angular velocity.
+    
+    :param angular_velocity: Target angular velocity (in deg/s)
+    :type angular_velocity: float
+    :param duration: Optional duration for jogging (in seconds). If None, jogging continues indefinitely.
+    :type duration: float | None
+    '''
+
+    if duration is not None:
+        duration *= 1000  # Convert seconds to milliseconds
+        return f"j {_degs2rpm(angular_velocity)} {round(duration)}"
+    return f"j {_degs2rpm(angular_velocity)}"
 
 
 def moveabs(angle:float, angular_velocity:float) -> str:
@@ -95,32 +87,51 @@ def moveinc(angle:float, angular_velocity:float, blending_mode:int = 2) -> str:
     return f"moveinc {_deg2counts(angle)} {_degs2rpm(angular_velocity)} {blending_mode}"
 
 
-def acc(val:float|None=None) -> str:
+## Communication Commands
+def quiet() -> str:
     """
-    Gets/sets the acceleration value of the rotation chair.
-    
-    :param val: If provided, sets the acceleration to this value (in deg/s**2). If None, returns the current acceleration value.
-    :type val: float | None
+    Make the servo stop echoing the sent command.
     """
-    if val:
-        return f"acc {_degs2rpm(val)}"
-    return "acc"
+    return "echo 0"
 
+def dequiet() -> str:
+    """
+    Make the servo be echoing again.
+    """
+    return "echo 1"
 
-def jogging(angular_velocity:float, duration:float|None=None) -> str:
-    '''
-    JOGGING function to rotate the chair continuously at a specified angular velocity.
+def delay(delay_time:float) -> str:
+    """
+    Introduces a delay of certain amount of seconds before the next command is executed.
+    """
+    return f"delay {int(delay_time * 1000)}"  # Convert seconds to milliseconds
+
+def record(sample_time:float, num_points:int, var:str = '"MECHANGLE "V') -> str:
+    """
+    Capture real-time variables from the rotation chair at specified intervals.
     
-    :param angular_velocity: Target angular velocity (in deg/s)
-    :type angular_velocity: float
-    :param duration: Optional duration for jogging (in seconds). If None, jogging continues indefinitely.
-    :type duration: float | None
-    '''
+    :param sample_time: 0 to 31.25 seconds
+    :type sample_time: float
+    :param num_points: 1 to 2000
+    :type num_points: int
+    :param var: Name of recordable variable (default is "MECHANGLE V"). Must be preceded by a quotation mark.
+    :type var: str
+    """
+    sampling_time = int(round(sample_time * 1000000 / 31.25))  # Convert seconds to units of 31.25 microseconds
+    return f"record {sampling_time} {num_points} {var}"
 
-    if duration is not None:
-        duration *= 1000  # Convert seconds to milliseconds
-        return f"j {_degs2rpm(angular_velocity)} {round(duration)}"
-    return f"j {_degs2rpm(angular_velocity)}"
+def trigger_record() -> str:
+    """
+    Triggers the start of data recording on the rotation chair when the next 'command' is sent.
+    """
+    return 'rectrig "CMD'
+
+def get_recorded_data() -> str:
+    """
+    Retrieves the recorded data from the rotation chair.
+    Please set the "GETMODE" to mode 0.
+    """
+    return 'get'
 
 
 def _deg2counts(angle:float) -> int:

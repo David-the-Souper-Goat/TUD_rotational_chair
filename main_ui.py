@@ -273,6 +273,11 @@ class VarComInterface:
             return
         
         self.log_terminal("Setting up Keshner motion...")
+
+        time_com = 0.3  # the time for sending each command
+        num_cmd_per_com = int(time_com / delta_t)  # number of commands to be sent in each batch
+        baurate = 115200  # baudrate of the serial communication
+        max_byte_per_com = baurate * time_com / 8  # maximum bytes of commands that can
         
         #Create Keshner motion table
         Keshner = KeshnerMotion(delta_t)
@@ -290,11 +295,16 @@ class VarComInterface:
         def motion_track() -> None:
             # Start the recording
             self._setup_record(delta_t/2, Keshner.TIME_TOTAL)
-            
+            count = 0
+
             # Send the jogging commands step by step
             for vo, to in zip(Keshner.speed_table, Keshner.time):
                 self._send_command(API_rotation_chair.jogging(vo), f"at t={round(to,2)}s")
-                threading.Event().wait(delta_t)  # Small delay between commands
+                self._command_delay(delta_t)
+                
+                count += 1
+                if count % num_cmd_per_com == 0:
+                    threading.Event().wait(time_com)  # Small delay between command batches
 
             # Stop jogging
             self._send_command(API_rotation_chair.jogging(0))
@@ -486,6 +496,16 @@ class VarComInterface:
             except Exception as e:
                 self.log_terminal(f"Read error: {e}")
                 break
+
+    def _command_delay(self, delay_time:float) -> None:
+        """
+        An internal function to introduce a delay of certain amount of seconds before the next command is executed.
+        
+        :param delay_time: The time of the delay in seconds
+        :type delay_time: float
+        """
+        self._send_command(API_rotation_chair.delay(delay_time))
+        return
 
     ### NEW FUNCTIONS ###
 
