@@ -38,6 +38,17 @@ def acc(val:float|None=None) -> str:
         return f"acc {_degs2rpm(val)}"
     return "acc"
 
+def dec(val:float|None=None) -> str:
+    """
+    Gets/sets the decceleration value of the rotation chair.
+    
+    :param val: If provided, sets the decceleration to this value (in deg/s**2). If None, returns the current decceleration value.
+    :type val: float | None
+    """
+    if val:
+        return f"dec {_degs2rpm(val)}"
+    return "dec"
+
 
 ## Motion Commands
 def jogging(angular_velocity:float, duration:float|None=None) -> str:

@@ -23,13 +23,12 @@ class VarComInterface:
         
         self.serial_port = None
         self.connected = False
+
         self.getting_record = False
+        self.quiet = False
 
         self.cmd_history = []
         self.cmd_rollback = 0
-
-        self.speed = 0
-        self.mechangle = 0
         
         # Create GUI elements
         self.create_widgets()
@@ -77,12 +76,16 @@ class VarComInterface:
 
         # Shortcut Buttons
         self.cmd_shortcut_frame = ttk.Frame(terminal_frame)
+        big_button_style = ttk.Style()
+        big_button_style.configure("Big.TButton", font=("Helvetica", 12), padding=12)
+
         self.cmd_shortcut_frame.pack()
         ttk.Button(self.cmd_shortcut_frame, text="Start", command=self.home_position).grid(row=0, column=0, padx=5)
         ttk.Button(self.cmd_shortcut_frame, text="1 tour", command=self.one_tour).grid(row=1, column=0, padx=5)
         ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).grid(row=0, column=1, padx=5)
         ttk.Button(self.cmd_shortcut_frame, text="Perception", command=self.perception).grid(row=1, column=1, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor).grid(row=0, column=2, padx=5, rowspan=2)
+        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor, style="Big.TButton").grid(row=0, column=2, padx=5, rowspan=2)
+        ttk.Button(self.cmd_shortcut_frame, text="Get record", command=self.get_recorded_data).grid(row=0, column=4, padx=40)
         
         # Status Dashboard
         # self.status_dashboard = ttk.Frame(terminal_frame)
@@ -242,6 +245,7 @@ class VarComInterface:
         Move the chair to the turn 0 and position 0\n
         Content of command: 'moveabs 0 15'
         """
+        self._opmode_switch(8)  # switch to position control mode
         self.clear_command()
         self.log_terminal("Home")
         self.cmd_entry.insert(0, "moveabs 0 15")
@@ -254,13 +258,14 @@ class VarComInterface:
         One-way ticket to the end of the experiment\n
         Content of command: 'moveinc 8388608 15'
         """
+        self._opmode_switch(8)  # switch to position control mode
         self.clear_command()
         self.cmd_entry.insert(0, "moveinc 8388608 15")
         self.send_command()
 
         return
     
-    def keshner_motion(self, delta_t:float = 0.01) -> None:
+    def keshner_motion(self, delta_t:float = 0.02) -> None:
         """
         Implement a Keshner motion to the servo.
         
@@ -273,48 +278,45 @@ class VarComInterface:
             return
         
         self.log_terminal("Setting up Keshner motion...")
-
-        time_com = 0.3  # the time for sending each command
-        num_cmd_per_com = int(time_com / delta_t)  # number of commands to be sent in each batch
-        baurate = 115200  # baudrate of the serial communication
-        max_byte_per_com = baurate * time_com / 8  # maximum bytes of commands that can
         
         #Create Keshner motion table
         Keshner = KeshnerMotion(delta_t)
         threading.Event().wait(0.5)  # Small delay between commands
-
-        # switch the opmode to velocity control
-        self._opmode_switch(0)
-
-        # switch off the echo
-        self._send_command(API_rotation_chair.quiet())
-
-        # change the acceleration cap
-        self._send_command(API_rotation_chair.acc(360*2))
         
         def motion_track() -> None:
+            
+            # switch the opmode to velocity control
+            self._opmode_switch(0)
+
+            # switch off the echo
+            self._send_command(API_rotation_chair.quiet())
+            self.quiet = True
+
             # Start the recording
             self._setup_record(delta_t/2, Keshner.TIME_TOTAL)
-            count = 0
+            next_time = time.time() + delta_t
 
-            # Send the jogging commands step by step
+            # Send the jogging command
+            # s step by step
             for vo, to in zip(Keshner.speed_table, Keshner.time):
-                self._send_command(API_rotation_chair.jogging(vo), f"at t={round(to,2)}s")
-                self._command_delay(delta_t)
-                
-                count += 1
-                if count % num_cmd_per_com == 0:
-                    threading.Event().wait(time_com)  # Small delay between command batches
+                t_start = time.time()
+                self._send_command(API_rotation_chair.jogging(vo))
+                dt = (time.time() - t_start)
+                self._command_delay(round(delta_t - dt,3))
+
+                while time.time() < next_time:  pass
+                next_time = next_time + delta_t
 
             # Stop jogging
             self._send_command(API_rotation_chair.jogging(0))
-            threading.Event().wait(0.5)  # Small delay between commands
+            threading.Event().wait(3)  # Small delay between commands
+
+            # switch on the echo
+            self._send_command(API_rotation_chair.dequiet())
+            self.quiet = False
 
             # switch the opmode back to position control.
             self._opmode_switch(8)
-
-            # change the acceleration cap
-            self._send_command(API_rotation_chair.acc(90))
 
             # go back home
             self._send_command(API_rotation_chair.moveabs(0, 20))
@@ -343,23 +345,14 @@ class VarComInterface:
             return
 
         def run():
+            self._opmode_switch(8)  # switch to position control mode
+
+            self._setup_record(0.5, 95, "MECHANGLE")    # record the position data with a sampling time of 0.5s and a total time of 95s
+
             try:
                 self.log_terminal("Start Perception Experiment")
                 # command 1
-                cmd1 = "moveinc 16777216 15"
-                self.serial_port.write((cmd1 + "\r").encode("ascii"))
-                self.log_terminal("→ " + cmd1)
-
-                threading.Event().wait(9)
-                self.log_terminal("Now break for 30 seconds")
-
-                # wait 50 seconds
-                threading.Event().wait(30)
-
-                # command 2  (NOTE: you had a typo: "25000015" -> "250000 15")
-                cmd2 = "moveinc -16777216 15"
-                self.serial_port.write((cmd2 + "\r").encode("ascii"))
-                self.log_terminal("→ " + cmd2)
+                self._send_command(API_rotation_chair.moveabs(360*23.75, 90), "Start to record.")
 
             except Exception as e:
                 self.log_terminal(f"Perception error: {e}")
@@ -409,13 +402,8 @@ class VarComInterface:
         self._send_command(API_rotation_chair.get_recorded_data())
 
         # Read the serial and output the file as txt.
-        self._read_serial(motion_parameter)
+        self._read_serial_and_output(motion_parameter)
 
-        return
-    
-    def _change_speed(self, value: float) -> None:
-        self.speed = value
-        self.speed_label.set(str(value))
         return
 
     def _send_command(self, command: str, log_message: str = "") -> None:
@@ -430,6 +418,8 @@ class VarComInterface:
             messagebox.showwarning("Warning", "Not connected to motor controller")
             return
         
+        if self.quiet: return
+
         if not command: return
         
         try:
@@ -439,11 +429,35 @@ class VarComInterface:
         except Exception as e:
             messagebox.showerror("Send Error", str(e))
     
-    def _setup_record(self, sampling_time:float, sampling_span:float) -> None:
+    def _setup_record(self, sampling_time:float, sampling_span:float, recording_variable:str|list[str] = "V") -> None:
+        '''
+        An internal function to set up the recording of the data.\r
+        It will send the command to the motor controller to start the recording,
+        and then call the function to read the serial data and save it to a file.
+
+        :param sampling_time: The time difference between each recorded data point in seconds
+        :type sampling_time: float
+        :param sampling_span: The total time of the recording in seconds
+        :type sampling_span: float
+        :param recording_variable: The variable to be recorded, 'V' for velocity, 'MECHANGLE' for position. You can send command "reclist" to the motor controller to check the available variables for recording.
+        :type recording_variable: str
+        '''
+
+        def format_recording_variable(var:str|list[str]) -> str:
+            if isinstance(var, str):
+                return var
+            elif isinstance(var, list):
+                new_var = []
+                for v in var:
+                    new_var.append('"' + v)
+                return " ".join(new_var)
+            else:
+                raise ValueError("recording_variable should be either a string or a list of strings.")
+
         # set the record data to 'ascii' encode.
         self._send_command("getmode 0")
 
-        self._send_command(API_rotation_chair.record(sampling_time, int(sampling_span//sampling_time), '"V'))
+        self._send_command(API_rotation_chair.record(sampling_time, int(sampling_span//sampling_time), format_recording_variable(recording_variable)))
 
         self._send_command(API_rotation_chair.trigger_record())
 
@@ -456,20 +470,33 @@ class VarComInterface:
         :param mode: 0: Velocity Control, 8: Position Control
         :type mode: int
         '''
+
+        acc_val = 360*4 if mode == 0 else 90
+
         # deactive the motor
         self.stop_motor()
+    
+        # change the acceleration cap
+        self._send_command(API_rotation_chair.acc(acc_val))
+        threading.Event().wait(0.5)  # Small delay between commands
+        self._send_command(API_rotation_chair.dec(acc_val))
+        threading.Event().wait(0.5)  # Small delay between commands
 
         # change opmode
         self._send_command(API_rotation_chair.opmode(mode))
         threading.Event().wait(0.5)  # Small delay between commands
+        self.log_terminal("Configure the new dynamic setting......")
+        threading.Event().wait(5)  # Small delay between commands
+        self._send_command("config")
 
         # enable the motor again
         self.enable_motor()
+        threading.Event().wait(3)  # Small delay between commands
 
         return
     
     
-    def _read_serial(self, motion_parameter:KeshnerMotion|None = None):
+    def _read_serial_and_output(self, motion_parameter:KeshnerMotion|None = None):
         if TEST_MODE: return
 
         # Create a file

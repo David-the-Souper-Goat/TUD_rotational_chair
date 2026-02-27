@@ -7,8 +7,8 @@ class KeshnerMotion:
     FUNDAMENTAL_FREQ = 0.005    #[Hz]
     HOMONICS = [37, 49, 71, 101, 143, 211, 295, 419, 589, 823]
     ANG_SPEED_HOMONICS = [20, 20, 20, 19, 19, 19, 16, 16, 15, 13]   #[deg/s]
-    TIME_TOTAL = 10            #[s] default total time of the motion
-    TIME_SHIFT = 443.714675       #[s] to make speed(0)=0
+    TIME_TOTAL = 20            #[s] default total time of the motion
+    TIME_SHIFT = 443.094675       #[s] to make speed(0)=0
 
     def __init__(self, sampling_time:float = 0.5, total_time:float = TIME_TOTAL) -> None:
         self.TIME_TOTAL = total_time
