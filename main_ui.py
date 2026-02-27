@@ -294,6 +294,9 @@ class VarComInterface:
             # switch the opmode to velocity control
             self._opmode_switch(0)
 
+            # change top acceleration
+            self.change_acc(360*6)
+
             # switch off the echo
             self._send_command(API_rotation_chair.quiet())
             self.quiet = True
@@ -303,8 +306,8 @@ class VarComInterface:
             next_time = time.time() + delta_t
 
             # Send the jogging command
-            for vo, to in zip(Keshner.speed_table, Keshner.time):
-                t_start = time.time()
+            for vo, po in zip(Keshner.speed_table, Keshner.position_table):
+                # t_start = time.time()
                 self._send_command(API_rotation_chair.jogging(vo))
                 # dt = time.time() - t_start
                 # self._command_delay(round(delta_t - dt,3))
@@ -322,6 +325,8 @@ class VarComInterface:
 
             # switch the opmode back to position control.
             self._opmode_switch(8)
+
+            self.change_acc(90)
 
             # go back home
             self._send_command(API_rotation_chair.moveabs(0, 20))
@@ -403,6 +408,22 @@ class VarComInterface:
                 return
 
         self.log_terminal("← " + line)
+        return
+    
+    def change_acc(self, val:float) -> None:
+        """
+        Change accelaration and deccelaration at the same time.\r
+        A short delay 0.5 s will be between 2 commands.
+
+        :param val: Value in deg/s^2 to implement as accelaration and decelaration.
+        """
+    
+        # change the acceleration cap
+        self._send_command(API_rotation_chair.acc(val))
+        threading.Event().wait(0.5)  # Small delay between commands
+        self._send_command(API_rotation_chair.dec(val))
+        threading.Event().wait(0.5)  # Small delay between commands
+        
         return
 
 
@@ -499,16 +520,8 @@ class VarComInterface:
         :type mode: int
         '''
 
-        acc_val = 360*6 if mode == 0 else 90
-
         # deactive the motor
         self.stop_motor()
-    
-        # change the acceleration cap
-        self._send_command(API_rotation_chair.acc(acc_val))
-        threading.Event().wait(0.5)  # Small delay between commands
-        self._send_command(API_rotation_chair.dec(acc_val))
-        threading.Event().wait(0.5)  # Small delay between commands
 
         # change opmode
         self._send_command(API_rotation_chair.opmode(mode))
@@ -520,6 +533,7 @@ class VarComInterface:
         threading.Event().wait(2)  # Small delay between commands
 
         return
+    
     
     
     def _read_serial_and_output(self, motion_parameter:KeshnerMotion|None = None):
