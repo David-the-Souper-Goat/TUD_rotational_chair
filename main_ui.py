@@ -25,7 +25,10 @@ class VarComInterface:
         self.connected = False
 
         self.getting_record = False
+        self.getting_speed = False
         self.quiet = False
+
+        self.speed = 0.0
 
         self.cmd_history = []
         self.cmd_rollback = 0
@@ -91,11 +94,11 @@ class VarComInterface:
         ttk.Button(self.cmd_shortcut_frame, text="Get record", command=self.get_recorded_data).grid(row=1, column=4, padx=40)
         
         # Status Dashboard
-        # self.status_dashboard = ttk.Frame(terminal_frame)
-        # self.status_dashboard.pack()
-        # self.speed_label = tk.StringVar()
-        # self._change_speed(self.speed)
-        # tk.Label(self.status_dashboard, textvariable=self.speed_label).pack(side="left", padx=5)
+        self.status_dashboard = ttk.Frame(terminal_frame)
+        self.status_dashboard.pack()
+        self.speed_label = tk.StringVar()
+        self.speed_label.set(str(self.speed))
+        tk.Label(self.status_dashboard, textvariable=self.speed_label).pack(side="left", padx=5)
 
         # Script Frame
         script_frame = ttk.LabelFrame(self.root, text="Script", padding=10)
@@ -303,15 +306,15 @@ class VarComInterface:
             for vo, to in zip(Keshner.speed_table, Keshner.time):
                 t_start = time.time()
                 self._send_command(API_rotation_chair.jogging(vo))
-                dt = time.time() - t_start
-                self._command_delay(round(delta_t - dt,3))
+                # dt = time.time() - t_start
+                # self._command_delay(round(delta_t - dt,3))
 
                 while time.time() < next_time:  pass
                 next_time = next_time + delta_t
 
             # Stop jogging
             self._send_command(API_rotation_chair.jogging(0))
-            threading.Event().wait(3)  # Small delay between commands
+            threading.Event().wait(6)  # Small delay between commands
 
             # switch on the echo
             self._send_command(API_rotation_chair.dequiet())
@@ -328,8 +331,6 @@ class VarComInterface:
             
             # Get the recorded data
             self.get_recorded_data(Keshner)
-
-            threading.Thread(target=self.read_serial, daemon=True).start()
 
             
             # switch on the echo
@@ -354,10 +355,26 @@ class VarComInterface:
             try:
                 self.log_terminal("Start Perception Experiment")
                 # command 1
-                self._send_command(API_rotation_chair.moveabs(direction*360*23, 90), "Start to record.")
+                self._send_command(API_rotation_chair.moveabs(direction*360*22, 90), "Start to record.")
+                start_time = time.time()
 
             except Exception as e:
                 self.log_terminal(f"Perception error: {e}")
+
+            vel_Ts = 0.5
+            total_time = 95
+
+            self.getting_speed = True
+
+            for _ in range(int(total_time/vel_Ts)):
+                self._send_command("v")
+                threading.Event().wait(vel_Ts)
+                if _ < 3: continue
+                if (self.speed > -0.1 and self.speed < 0.1):
+                    print(f"Duration: {round(time.time() - start_time, 1)} s")
+                    break
+
+            self.getting_speed = False
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -375,7 +392,15 @@ class VarComInterface:
         """
         if not line: return
         
-
+        if self.getting_speed:
+            space_pos = line.find(" ")
+            if space_pos != -1:
+                try:
+                    vel = float(line[:space_pos])
+                    self._change_speed(vel)
+                except:
+                    print("Unreadable")
+                return
 
         self.log_terminal("← " + line)
         return
@@ -406,6 +431,8 @@ class VarComInterface:
         # Read the serial and output the file as txt.
         self._read_serial_and_output(motion_parameter)
 
+        threading.Thread(target=self.read_serial, daemon=True).start()
+
         return
 
     def _send_command(self, command: str, log_message: str = "") -> None:
@@ -425,7 +452,7 @@ class VarComInterface:
         try:
             if not TEST_MODE:
                 self.serial_port.write((command + '\r').encode('ascii'))
-            if self.quiet: return
+            if self.quiet or self.getting_speed: return
             self.log_terminal("→ " + command + "\t\t\t" + log_message)
         except Exception as e:
             messagebox.showerror("Send Error", str(e))
@@ -446,7 +473,7 @@ class VarComInterface:
 
         def format_recording_variable(var:str|list[str]) -> str:
             if isinstance(var, str):
-                return var
+                return '"' + var
             elif isinstance(var, list):
                 new_var = []
                 for v in var:
@@ -459,7 +486,7 @@ class VarComInterface:
         self._send_command("getmode 0")
 
         self._send_command(API_rotation_chair.record(sampling_time, int(sampling_span//sampling_time), format_recording_variable(recording_variable)))
-
+        print(format_recording_variable(recording_variable))
         self._send_command(API_rotation_chair.trigger_record())
 
         return
@@ -472,7 +499,7 @@ class VarComInterface:
         :type mode: int
         '''
 
-        acc_val = 360*4 if mode == 0 else 90
+        acc_val = 360*6 if mode == 0 else 90
 
         # deactive the motor
         self.stop_motor()
@@ -490,7 +517,7 @@ class VarComInterface:
 
         # enable the motor again
         self.enable_motor()
-        threading.Event().wait(3)  # Small delay between commands
+        threading.Event().wait(2)  # Small delay between commands
 
         return
     
@@ -534,6 +561,13 @@ class VarComInterface:
         :type delay_time: float
         """
         self._send_command(API_rotation_chair.delay(delay_time))
+        return
+    
+    def _change_speed(self, val:float) -> None:
+
+        self.speed = val
+        self.speed_label.set(str(val))
+
         return
 
     ### NEW FUNCTIONS ###

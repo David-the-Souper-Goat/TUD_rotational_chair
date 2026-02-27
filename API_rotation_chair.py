@@ -159,6 +159,21 @@ def _deg2counts(angle:float) -> int:
     return int(angle)
 
 
+def _counts2deg(count:float) -> int:
+    '''
+    Converts a count to angle in degree based on the total resolution of the rotation chair.
+    
+    :param angle: Angle in degrees
+    :type angle: float
+    :return: Angle in counts
+    :rtype: int
+    '''
+    count *= 360
+    count //= RES_TOTAL
+    
+    return int(count)
+
+
 def _degs2rpm(angular_velocity:float) -> float:
     '''
     Converts an angular velocity in degrees per second to revolutions per minute (rpm).
