@@ -26,6 +26,7 @@ class KeshnerMotion:
         self.sampling_time = sampling_time
         self._generate_time_table()
         self._generate_speed_table()
+        self._generate_position_table()
         return
 
     def position(self, t:float) -> float:
@@ -72,6 +73,9 @@ class KeshnerMotion:
     def _generate_speed_table(self) -> None:
         self.speed_table = [self.speed(t) for t in self.time]
         return
+    
+    def _generate_position_table(self) -> None:
+        self.position_table = [self.position(t) for t in self.time]
     
 
 if __name__ == "__main__":
