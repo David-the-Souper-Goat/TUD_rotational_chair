@@ -12,7 +12,7 @@ from keshner_motion import KeshnerMotion
 import API_rotation_chair
 
 
-TEST_MODE = True
+TEST_MODE = False
 
 
 class VarComInterface:
@@ -80,12 +80,15 @@ class VarComInterface:
         big_button_style.configure("Big.TButton", font=("Helvetica", 12), padding=12)
 
         self.cmd_shortcut_frame.pack()
-        ttk.Button(self.cmd_shortcut_frame, text="Start", command=self.home_position).grid(row=0, column=0, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="1 tour", command=self.one_tour).grid(row=1, column=0, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).grid(row=0, column=1, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="Perception", command=self.perception).grid(row=1, column=1, padx=5)
-        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor, style="Big.TButton").grid(row=0, column=2, padx=5, rowspan=2)
-        ttk.Button(self.cmd_shortcut_frame, text="Get record", command=self.get_recorded_data).grid(row=0, column=4, padx=40)
+        ttk.Label(self.cmd_shortcut_frame, text="Perception").grid(row=0, column=1, padx=5)
+
+        ttk.Button(self.cmd_shortcut_frame, text="Start", command=self.home_position).grid(row=1, column=0, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="1 tour", command=self.one_tour).grid(row=2, column=0, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="CCW", command=lambda: self.perception()).grid(row=1, column=1, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="CW", command=lambda: self.perception(-1)).grid(row=2, column=1, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="Keshner", command=self.keshner_motion).grid(row=1, column=2, padx=5)
+        ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor, style="Big.TButton").grid(row=1, column=3, padx=5, rowspan=2)
+        ttk.Button(self.cmd_shortcut_frame, text="Get record", command=self.get_recorded_data).grid(row=1, column=4, padx=40)
         
         # Status Dashboard
         # self.status_dashboard = ttk.Frame(terminal_frame)
@@ -297,11 +300,10 @@ class VarComInterface:
             next_time = time.time() + delta_t
 
             # Send the jogging command
-            # s step by step
             for vo, to in zip(Keshner.speed_table, Keshner.time):
                 t_start = time.time()
                 self._send_command(API_rotation_chair.jogging(vo))
-                dt = (time.time() - t_start)
+                dt = time.time() - t_start
                 self._command_delay(round(delta_t - dt,3))
 
                 while time.time() < next_time:  pass
@@ -339,7 +341,7 @@ class VarComInterface:
 
 
     
-    def perception(self):
+    def perception(self, direction: int = 1):
         if not self.connected:
             messagebox.showwarning("Warning", "Not connected to motor controller")
             return
@@ -347,12 +349,12 @@ class VarComInterface:
         def run():
             self._opmode_switch(8)  # switch to position control mode
 
-            self._setup_record(0.5, 95, "MECHANGLE")    # record the position data with a sampling time of 0.5s and a total time of 95s
+            self._setup_record(0.5, 95, ["MECHANGLE", "V"])    # record the position data with a sampling time of 0.5s and a total time of 95s
 
             try:
                 self.log_terminal("Start Perception Experiment")
                 # command 1
-                self._send_command(API_rotation_chair.moveabs(360*23.75, 90), "Start to record.")
+                self._send_command(API_rotation_chair.moveabs(direction*360*23, 90), "Start to record.")
 
             except Exception as e:
                 self.log_terminal(f"Perception error: {e}")
@@ -417,14 +419,13 @@ class VarComInterface:
         if not self.connected and not TEST_MODE:
             messagebox.showwarning("Warning", "Not connected to motor controller")
             return
-        
-        if self.quiet: return
 
         if not command: return
         
         try:
             if not TEST_MODE:
                 self.serial_port.write((command + '\r').encode('ascii'))
+            if self.quiet: return
             self.log_terminal("→ " + command + "\t\t\t" + log_message)
         except Exception as e:
             messagebox.showerror("Send Error", str(e))
@@ -486,8 +487,6 @@ class VarComInterface:
         self._send_command(API_rotation_chair.opmode(mode))
         threading.Event().wait(0.5)  # Small delay between commands
         self.log_terminal("Configure the new dynamic setting......")
-        threading.Event().wait(5)  # Small delay between commands
-        self._send_command("config")
 
         # enable the motor again
         self.enable_motor()
@@ -500,7 +499,8 @@ class VarComInterface:
         if TEST_MODE: return
 
         # Create a file
-        recording_file_name = f"motion_record_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt"
+        recording_folder_name = "../Recorded Data"
+        recording_file_name = recording_folder_name + f"/motion_record_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.txt"
 
         with open(recording_file_name, 'w') as newfile:
             # Writing the header
@@ -523,6 +523,8 @@ class VarComInterface:
             except Exception as e:
                 self.log_terminal(f"Read error: {e}")
                 break
+        
+        self.log_terminal(f"Created file: {recording_file_name}")
 
     def _command_delay(self, delay_time:float) -> None:
         """
