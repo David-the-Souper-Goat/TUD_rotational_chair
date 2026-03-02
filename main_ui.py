@@ -27,6 +27,7 @@ class VarComInterface:
         self.getting_record = False
         self.getting_speed = False
         self.quiet = False
+        self.motor_active = False
 
         self.speed = 0.0
 
@@ -302,11 +303,12 @@ class VarComInterface:
             self.quiet = True
 
             # Start the recording
-            self._setup_record(delta_t/2, Keshner.TIME_TOTAL)
+            self._setup_record(0.1, Keshner.TIME_TOTAL)
             next_time = time.time() + delta_t
 
             # Send the jogging command
             for vo, po in zip(Keshner.speed_table, Keshner.position_table):
+                if not self.motor_active: break
                 # t_start = time.time()
                 self._send_command(API_rotation_chair.jogging(vo))
                 # dt = time.time() - t_start
@@ -314,6 +316,8 @@ class VarComInterface:
 
                 while time.time() < next_time:  pass
                 next_time = next_time + delta_t
+
+            self.change_acc(90)
 
             # Stop jogging
             self._send_command(API_rotation_chair.jogging(0))
@@ -325,8 +329,6 @@ class VarComInterface:
 
             # switch the opmode back to position control.
             self._opmode_switch(8)
-
-            self.change_acc(90)
 
             # go back home
             self._send_command(API_rotation_chair.moveabs(0, 20))
@@ -431,6 +433,8 @@ class VarComInterface:
         """
         Enable function to enable the motor.
         """
+        self.motor_active = True
+
         self._send_command(API_rotation_chair.enable_motor(), "Motor Enable")
         threading.Event().wait(0.5)  # Small delay between commands
         return
@@ -439,6 +443,9 @@ class VarComInterface:
         """
         Stop function to stop the chair immediately and disable the motor.
         """
+        self.motor_active = False
+
+
         self._send_command(API_rotation_chair.disable_motor(), "Motor Stop")
         threading.Event().wait(0.5)  # Small delay between commands
         return
