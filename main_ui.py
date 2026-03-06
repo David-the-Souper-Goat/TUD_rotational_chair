@@ -303,7 +303,7 @@ class VarComInterface:
             self.quiet = True
 
             # Start the recording
-            self._setup_record(0.1, Keshner.TIME_TOTAL)
+            self._setup_record(0.1, Keshner.TIME_TOTAL, ["PCMD", "V"])
             next_time = time.time() + delta_t
 
             # Send the jogging command
@@ -337,7 +337,7 @@ class VarComInterface:
             self.log_terminal("End of the motion.")
             
             # Get the recorded data
-            self.get_recorded_data(Keshner)
+            # self.get_recorded_data(Keshner)
 
             
             # switch on the echo
@@ -357,7 +357,7 @@ class VarComInterface:
         def run():
             self._opmode_switch(8)  # switch to position control mode
 
-            self._setup_record(0.5, 95, ["MECHANGLE", "V"])    # record the position data with a sampling time of 0.5s and a total time of 95s
+            self._setup_record(0.5, 95, ["PCMD", "V"])    # record the position data with a sampling time of 0.5s and a total time of 95s
 
             try:
                 self.log_terminal("Start Perception Experiment")
