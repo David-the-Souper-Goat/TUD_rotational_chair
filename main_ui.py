@@ -295,6 +295,9 @@ class VarComInterface:
             # switch the opmode to velocity control
             self._opmode_switch(0)
 
+            self._send_command("knli 12")
+            threading.Event().wait(0.5)  # Small delay between commands
+
             # change top acceleration
             self.change_acc(360*6)
 
@@ -303,7 +306,7 @@ class VarComInterface:
             self.quiet = True
 
             # Start the recording
-            self._setup_record(0.1, Keshner.TIME_TOTAL, ["PCMD", "V"])
+            # self._setup_record(0.1, Keshner.TIME_TOTAL, ["PCMD", "V"])
             next_time = time.time() + delta_t
 
             # Send the jogging command
@@ -329,6 +332,9 @@ class VarComInterface:
 
             # switch the opmode back to position control.
             self._opmode_switch(8)
+            
+            self._send_command("knli 8")
+            threading.Event().wait(0.5)  # Small delay between commands
 
             # go back home
             self._send_command(API_rotation_chair.moveabs(0, 20))
