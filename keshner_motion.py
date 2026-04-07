@@ -41,7 +41,7 @@ class KeshnerMotion:
         """
 
         ans = 0.0
-        t = t - self.TIME_SHIFT
+        t = t + self.TIME_SHIFT
         for i in range(len(self.HOMONICS)):
             A_i = self.ANG_SPEED_HOMONICS[i]
             f_i_rad = 2 * pi * self.FUNDAMENTAL_FREQ * self.HOMONICS[i]
@@ -59,7 +59,7 @@ class KeshnerMotion:
         :return: The position in [deg/s]
         :rtype: float
         """
-        t = t - self.TIME_SHIFT
+        t = t + self.TIME_SHIFT
         ans = sum([A*sin(2*pi*h*self.FUNDAMENTAL_FREQ*t) for A, h in zip(self.ANG_SPEED_HOMONICS, self.HOMONICS)])
 
         return round(ans,2)
