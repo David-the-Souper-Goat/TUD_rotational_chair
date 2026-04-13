@@ -304,6 +304,11 @@ class VarComInterface:
             # switch off the echo
             self._send_command(API_rotation_chair.quiet())
             self.quiet = True
+            
+            self.log_terminal("Count in...")
+            for _ in range(3):
+                self.log_terminal(str(3 - _) + "!")
+                threading.Event().wait(1)
 
             # Start the recording
             # self._setup_record(0.1, Keshner.TIME_TOTAL, ["PCMD", "V"])
@@ -363,8 +368,6 @@ class VarComInterface:
         def run():
             self._opmode_switch(8)  # switch to position control mode
 
-            self._setup_record(0.5, 95, ["PCMD", "V"])    # record the position data with a sampling time of 0.5s and a total time of 95s
-
             try:
                 self.log_terminal("Start Perception Experiment")
                 # command 1
@@ -377,17 +380,6 @@ class VarComInterface:
             vel_Ts = 0.5
             total_time = 95
 
-            self.getting_speed = True
-
-            for _ in range(int(total_time/vel_Ts)):
-                self._send_command("v")
-                threading.Event().wait(vel_Ts)
-                if _ < 3: continue
-                if (self.speed > -0.1 and self.speed < 0.1):
-                    print(f"Duration: {round(time.time() - start_time, 1)} s")
-                    break
-
-            self.getting_speed = False
 
         threading.Thread(target=run, daemon=True).start()
 
