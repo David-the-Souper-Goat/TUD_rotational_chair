@@ -94,6 +94,19 @@ class VarComInterface:
         ttk.Button(self.cmd_shortcut_frame, text="STOP", command=self.stop_motor, style="Big.TButton").grid(row=1, column=3, padx=5, rowspan=2)
         ttk.Button(self.cmd_shortcut_frame, text="Get record", command=self.get_recorded_data).grid(row=1, column=4, padx=40)
         
+        self.experiment_panel = ttk.Frame(terminal_frame)
+        self.experiment_panel.pack()
+        self.First_f = tk.IntVar(value=1)
+        self.Second_f = tk.IntVar(value=1)
+        self.Third_f = tk.IntVar(value=1)
+        tick_box1 = ttk.Checkbutton(self.experiment_panel, text="1st F?", variable=self.First_f)
+        tick_box2 = ttk.Checkbutton(self.experiment_panel, text="2nd F?", variable=self.Second_f)
+        tick_box3 = ttk.Checkbutton(self.experiment_panel, text="3rd F?", variable=self.Third_f)
+        tick_box1.pack()
+        tick_box2.pack()
+        tick_box3.pack()
+        ttk.Button(self.experiment_panel, text="Call Partial Motion", command=self.partial_motion).pack()
+        
         # Status Dashboard
         self.status_dashboard = ttk.Frame(terminal_frame)
         self.status_dashboard.pack()
@@ -272,6 +285,84 @@ class VarComInterface:
 
         return
     
+    def partial_motion(self) -> None:
+
+        
+        self.log_terminal("Setting up Keshner motion...")
+        
+        #Create Keshner motion table
+        Keshner = KeshnerMotion(delta_t)
+        threading.Event().wait(0.5)  # Small delay between commands
+        
+        def partial_motion_track() -> None:
+            
+            # switch the opmode to velocity control
+            self._opmode_switch(0)
+
+            self._send_command("knli 12")
+            threading.Event().wait(0.5)  # Small delay between commands
+
+            # change top acceleration
+            self.change_acc(360*6)
+
+            # switch off the echo
+            self._send_command(API_rotation_chair.quiet())
+            self.quiet = True
+            
+            self.log_terminal("Count in...")
+            for _ in range(3):
+                self.log_terminal(str(3 - _) + "!")
+                threading.Event().wait(1)
+
+            # Start the recording
+            # self._setup_record(0.1, Keshner.TIME_TOTAL, ["PCMD", "V"])
+            next_time = time.time() + delta_t
+
+            # Send the jogging command
+            for vo, po in zip(Keshner.speed_table, Keshner.position_table):
+                if not self.motor_active: break
+                # t_start = time.time()
+                self._send_command(API_rotation_chair.jogging(vo))
+                # dt = time.time() - t_start
+                # self._command_delay(round(delta_t - dt,3))
+
+                while time.time() < next_time:  pass
+                next_time = next_time + delta_t
+
+            self.change_acc(90)
+
+            # Stop jogging
+            self._send_command(API_rotation_chair.jogging(0))
+            threading.Event().wait(6)  # Small delay between commands
+
+            # switch on the echo
+            self._send_command(API_rotation_chair.dequiet())
+            self.quiet = False
+
+            # switch the opmode back to position control.
+            self._opmode_switch(8)
+            
+            self._send_command("knli 8")
+            threading.Event().wait(0.5)  # Small delay between commands
+
+            # go back home
+            self._send_command(API_rotation_chair.moveabs(0, 20))
+
+            # End
+            self.log_terminal("End of the motion.")
+            
+            # Get the recorded data
+            # self.get_recorded_data(Keshner)
+
+            
+            # switch on the echo
+            self._send_command(API_rotation_chair.dequiet())
+            
+        
+        # Start a thread for tracking the motion
+        threading.Thread(target=partial_motion_track, daemon=True).start()
+
+
     def keshner_motion(self, delta_t:float = 0.02) -> None:
         """
         Implement a Keshner motion to the servo.
